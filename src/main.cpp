@@ -85,7 +85,7 @@ QueueHandle_t xFilaRGBBlue;
 QueueHandle_t xFilaCardNumber;
 QueueHandle_t xFilaActivationType;
 QueueHandle_t xFilaActivationTypeDispenser;
-QueueHandle_t xFilaDispenserTime;
+QueueHandle_t xFilaDispenserPortions;
 
 SemaphoreHandle_t xSemaphoreOpenCover;
 SemaphoreHandle_t xSemaphoreCloseCover;
@@ -232,7 +232,7 @@ void setup() {
   xFilaCardNumber = xQueueCreate(1, sizeof(char[10]));
   xFilaActivationType = xQueueCreate(1, sizeof(bool));
   xFilaActivationTypeDispenser = xQueueCreate(2, sizeof(bool));
-  xFilaDispenserTime = xQueueCreate(2, sizeof(int));
+  xFilaDispenserPortions = xQueueCreate(2, sizeof(int));
 
   attachInterrupt(digitalPinToInterrupt(btnMasterPin), btnMasterISRCallBack, FALLING);
   attachInterrupt(digitalPinToInterrupt(btnCoverPin), btnCoverISRCallBack, FALLING);
@@ -380,23 +380,26 @@ void vTaskServoTampa(void *pvParameters)
 
 void vTaskServoDispenser(void *pvParameters)
 {
-  int dispenser_time;
+  int dispenser_portions, count_portions;
   char *timestamp;
   bool activationtype;
     while (1)
     {
-      xQueueReceive(xFilaDispenserTime, &dispenser_time, portMAX_DELAY);
+      xQueueReceive(xFilaDispenserPortions, &dispenser_portions, portMAX_DELAY);
       xQueueReceive(xFilaActivationTypeDispenser, &activationtype, portMAX_DELAY);
       xSemaphoreTake(xSemaphoreOpenDispenser,portMAX_DELAY);
       mqttPublishMessage(device_id, "Abrindo dispenser.");
       timestamp = getTimeISORTC();
 
       openCover();
-      rotateDispenser();
-      vTaskDelay(pdMS_TO_TICKS(dispenser_time));
+
+      for(count_portions = 0; count_portions < dispenser_portions; count_portions++){
+        rotateDispenser();
+      }
+
       closeCover();
     
-      mqttPublishLogDispenser(device_id, timestamp, dispenser_time, activationtype);
+      mqttPublishLogDispenser(device_id, timestamp, dispenser_portions, activationtype);
       free(timestamp);
       mqttPublishMessage(device_id, "Fechando o dispenser.");
       vTaskResume(taskDispenserScheduleCheckHandle);
@@ -650,10 +653,10 @@ void btnCoverISRCallBack(){
 
 void btnDispenserISRCallBack(){
   BaseType_t xHighPriorityTaskWoken = pdFALSE;
-  int dispenser_time = 5000;
+  int dispenser_portions = 5;
   bool activationtype = false;
 
-  xQueueSendToFrontFromISR(xFilaDispenserTime, &dispenser_time, &xHighPriorityTaskWoken);
+  xQueueSendToFrontFromISR(xFilaDispenserPortions, &dispenser_portions, &xHighPriorityTaskWoken);
   xQueueSendToFrontFromISR(xFilaActivationTypeDispenser, &activationtype, &xHighPriorityTaskWoken);
   vTaskResume(taskServoDispenserHandle);
   xSemaphoreGiveFromISR(xSemaphoreOpenDispenser, &xHighPriorityTaskWoken);
@@ -991,9 +994,9 @@ boolean dispenserScheduleRead() {
       timer_period = timer_period * 1000;
       xTimerChangePeriod(xTimerDispenserSchedule, pdMS_TO_TICKS(timer_period), 0);
       xTimerStart(xTimerDispenserSchedule, 0);
-      xQueueReset(xFilaDispenserTime);
+      xQueueReset(xFilaDispenserPortions);
       xQueueReset(xFilaActivationTypeDispenser);
-      xQueueSendToBack(xFilaDispenserTime, &food_weight, 0);
+      xQueueSendToBack(xFilaDispenserPortions, &food_weight, 0);
       xQueueSendToBack(xFilaActivationTypeDispenser, &activationtype, 0);
     }
     else{
@@ -1278,10 +1281,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length){
     }
   }
   else if(strcmp(topic, mqtt_topic_dispenser)==0){
-      int dispenser_time = atoi((const char*)payload);
+      int dispenser_portions = atoi((const char*)payload);
       bool activationtype = false;
 
-      xQueueSendToFront(xFilaDispenserTime, &dispenser_time, 0);
+      xQueueSendToFront(xFilaDispenserPortions, &dispenser_portions, 0);
       xQueueSendToFront(xFilaActivationTypeDispenser, &activationtype, 0);          
       vTaskResume(taskServoDispenserHandle);
       xSemaphoreGive(xSemaphoreOpenDispenser);
