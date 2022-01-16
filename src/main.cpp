@@ -30,7 +30,7 @@
 #define RGBBluePin 25
 #define weightCoverDTPin 27
 #define weightCoverSCKPin 14
-#define weightDispenserDTPin 12
+#define weightDispenserDTPin 26
 #define weightDispenserSCKPin 13
 #define dispenserPin 2
 #define openCoverPin 4
