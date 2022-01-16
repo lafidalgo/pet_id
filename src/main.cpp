@@ -177,7 +177,7 @@ void setup() {
   pinMode(RGBRedPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
   pinMode(RGBGreenPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
   pinMode(RGBBluePin, OUTPUT); //DEFINE O PINO COMO SAÍDA 
-  Serial.println("Pins init complete.");
+  Serial.println("Pins init complete..");
 
   initServos(servo1, servo2, servo3, servo1Pin, servo2Pin, servo3Pin);
 
