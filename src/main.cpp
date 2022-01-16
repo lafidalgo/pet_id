@@ -10,6 +10,7 @@
 #include <PubSubClient.h>
 #include "RTClib.h"  
 #include <SPI.h>
+#include "HX711.h"
 
 /*Bibliotecas FreeRTOS */
 #include "freertos/FreeRTOS.h"
