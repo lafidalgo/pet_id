@@ -164,6 +164,10 @@ void readSendFile(String pathFile, char * mqtt_topic);
 void setRGBColor(int red, int green, int blue);
 void blinkRGBColor(int red, int green, int blue);
 
+void openCover();
+void closeCover();
+void rotateDispenser();
+
 /*função setup*/
 void setup() {
   Serial.begin(115200); //configura comunicação serial com baudrate de 9600
@@ -359,19 +363,13 @@ void vTaskServoTampa(void *pvParameters)
       mqttPublishMessage(device_id, "Abrindo tampa.");
       duration = millis();
       timestamp = getTimeISORTC();
-      digitalWrite(openCoverPin, LOW);
-      vTaskDelay(pdMS_TO_TICKS(100));
-      digitalWrite(openCoverPin, HIGH);
-      xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
+      openCover();
       xTimerStart(xTimerClose,0);
 
       xSemaphoreTake(xSemaphoreCloseCover,portMAX_DELAY);
       xTimerStop(xTimerClose,0);
       duration = millis() - duration;
-      digitalWrite(closeCoverPin, LOW);
-      vTaskDelay(pdMS_TO_TICKS(100));
-      digitalWrite(closeCoverPin, HIGH);
-      xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
+      closeCover();
 
       mqttPublishLog(device_id, timestamp, duration, 123, card_number, activationtype);
       free(timestamp);
@@ -393,22 +391,11 @@ void vTaskServoDispenser(void *pvParameters)
       xSemaphoreTake(xSemaphoreOpenDispenser,portMAX_DELAY);
       mqttPublishMessage(device_id, "Abrindo dispenser.");
       timestamp = getTimeISORTC();
-      digitalWrite(openCoverPin, LOW);
-      vTaskDelay(pdMS_TO_TICKS(100));
-      digitalWrite(openCoverPin, HIGH);
-      xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
 
-      digitalWrite(dispenserPin, LOW);
-      vTaskDelay(pdMS_TO_TICKS(100));
-      digitalWrite(dispenserPin, HIGH);
-      xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
-
+      openCover();
+      rotateDispenser();
       vTaskDelay(pdMS_TO_TICKS(dispenser_time));
-
-      digitalWrite(closeCoverPin, LOW);
-      vTaskDelay(pdMS_TO_TICKS(100));
-      digitalWrite(closeCoverPin, HIGH);
-      xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
+      closeCover();
     
       mqttPublishLogDispenser(device_id, timestamp, dispenser_time, activationtype);
       free(timestamp);
@@ -1572,4 +1559,26 @@ void blinkRGBColor(int red, int green, int blue){
   xQueueOverwrite(xFilaRGBRed, &red);
   xQueueOverwrite(xFilaRGBGreen, &green);
   xQueueOverwrite(xFilaRGBBlue, &blue);
+}
+
+//.......................Stepper.............................
+void openCover(){
+  digitalWrite(openCoverPin, LOW);
+  vTaskDelay(pdMS_TO_TICKS(100));
+  digitalWrite(openCoverPin, HIGH);
+  xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
+}
+
+void closeCover(){
+  digitalWrite(closeCoverPin, LOW);
+  vTaskDelay(pdMS_TO_TICKS(100));
+  digitalWrite(closeCoverPin, HIGH);
+  xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
+}
+
+void rotateDispenser(){
+  digitalWrite(dispenserPin, LOW);
+  vTaskDelay(pdMS_TO_TICKS(100));
+  digitalWrite(dispenserPin, HIGH);
+  xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
 }
