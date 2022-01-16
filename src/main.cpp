@@ -1,6 +1,5 @@
 /*Biblioteca do Arduino*/
 #include <Arduino.h>
-#include <ESP32Servo.h>
 #include <Wire.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,20 +21,22 @@
 /*mapeamento de pinos*/ 
 #define RXD2 16
 #define TXD2 17
-#define RFIDResetPin 15
+#define RFIDResetPin 19
 #define btnMasterPin 23
 #define btnCoverPin 5
 #define btnDispenserPin 18
 #define RGBRedPin 32
 #define RGBGreenPin 33
 #define RGBBluePin 25
-int servo1Pin = 2;
-int servo2Pin = 4;
-int servo3Pin = 19;
+#define weightCoverDTPin 27
+#define weightCoverSCKPin 14
+#define weightDispenserDTPin 12
+#define weightDispenserSCKPin 13
+#define dispenserPin 2
+#define openCoverPin 4
+#define closeCoverPin 15
+#define ackStepperPin 34
 
-Servo servo1;  // create servo object to control a servo
-Servo servo2;
-Servo servo3;
 RTC_DS3231 rtc;
 
 WiFiClient espClient;
@@ -90,6 +91,7 @@ SemaphoreHandle_t xSemaphoreOpenCover;
 SemaphoreHandle_t xSemaphoreCloseCover;
 SemaphoreHandle_t xSemaphoreOpenDispenser;
 SemaphoreHandle_t xSemaphoreMasterMode;
+SemaphoreHandle_t xSemaphoreACKStepper;
 
 TimerHandle_t xTimerClose;
 TimerHandle_t xTimerMasterMode;
@@ -117,10 +119,6 @@ void callBackTimerDispenserScheduleCheck(TimerHandle_t xTimer);
 void callBackTimerSyncTime(TimerHandle_t xTimer);
 void callBackTimerConnectionsCheck(TimerHandle_t xTimer);
 void callBackTimerHeartbeat(TimerHandle_t xTimer);
-
-void initServos(Servo &servo1_name, Servo &servo2_name, Servo &servo3_name, int servo1_Pin, int servo2_Pin, int servo3_Pin);
-void rotateServo(Servo &servo, int init_pos, int final_pos, int delay_rot);
-void rotateBothServos(Servo &servo1_name, Servo &servo2_name, int init_pos, int final_pos, int delay_rot);
 
 char checkSum (char message_payload[10]);
 
@@ -157,6 +155,7 @@ void mqttPublishHeartbeat(char * id);
 void btnMasterISRCallBack();
 void btnCoverISRCallBack();
 void btnDispenserISRCallBack();
+void ackStepperISRCallBack();
 
 bool writeFile(String values, String pathFile, bool appending);
 String readFile(String pathFile);
@@ -171,14 +170,22 @@ void setup() {
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
   pinMode(RFIDResetPin, OUTPUT);
   digitalWrite(RFIDResetPin, HIGH);
+
   pinMode(btnMasterPin,INPUT_PULLUP);
   pinMode(btnCoverPin,INPUT_PULLUP);
   pinMode(btnDispenserPin,INPUT_PULLUP);
+
   pinMode(RGBRedPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
   pinMode(RGBGreenPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
   pinMode(RGBBluePin, OUTPUT); //DEFINE O PINO COMO SAÍDA 
 
-  initServos(servo1, servo2, servo3, servo1Pin, servo2Pin, servo3Pin);
+  pinMode(dispenserPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
+  digitalWrite(dispenserPin, HIGH);
+  pinMode(openCoverPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
+  digitalWrite(openCoverPin, HIGH);
+  pinMode(closeCoverPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
+  digitalWrite(closeCoverPin, HIGH);
+  pinMode(ackStepperPin, INPUT); //DEFINE O PINO COMO SAÍDA  
 
   if(!SPIFFS.begin(true)){
     Serial.println("An Error has occurred while mounting SPIFFS");
@@ -226,6 +233,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(btnMasterPin), btnMasterISRCallBack, FALLING);
   attachInterrupt(digitalPinToInterrupt(btnCoverPin), btnCoverISRCallBack, FALLING);
   attachInterrupt(digitalPinToInterrupt(btnDispenserPin), btnDispenserISRCallBack, FALLING);
+  attachInterrupt(digitalPinToInterrupt(ackStepperPin), ackStepperISRCallBack, RISING);
 
   xSemaphoreMasterMode = xSemaphoreCreateBinary();
 
@@ -251,6 +259,13 @@ void setup() {
   xSemaphoreOpenDispenser = xSemaphoreCreateBinary();
 
   if(xSemaphoreOpenDispenser == NULL){
+   mqttPublishLogError(device_id, "Não foi possível criar o semaforo!");
+   ESP.restart();
+  }
+
+  xSemaphoreACKStepper = xSemaphoreCreateBinary();
+
+  if(xSemaphoreACKStepper == NULL){
    mqttPublishLogError(device_id, "Não foi possível criar o semaforo!");
    ESP.restart();
   }
@@ -331,8 +346,6 @@ void loop() {
 //.......................Tasks.............................
 void vTaskServoTampa(void *pvParameters)
 {
-  int delay_rotation = 15;
-  int max_degress = 90;
   long duration;
   char *timestamp;
   char card_number[11];
@@ -346,12 +359,19 @@ void vTaskServoTampa(void *pvParameters)
       mqttPublishMessage(device_id, "Abrindo tampa.");
       duration = millis();
       timestamp = getTimeISORTC();
-      rotateBothServos(servo1, servo2, 0, max_degress, delay_rotation); //Abre a tampa
+      digitalWrite(openCoverPin, LOW);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      digitalWrite(openCoverPin, HIGH);
+      xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
+      xTimerStart(xTimerClose,0);
 
       xSemaphoreTake(xSemaphoreCloseCover,portMAX_DELAY);
       xTimerStop(xTimerClose,0);
       duration = millis() - duration;
-      rotateBothServos(servo1, servo2, max_degress, 0, delay_rotation); //Fecha a tampa
+      digitalWrite(closeCoverPin, LOW);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      digitalWrite(closeCoverPin, HIGH);
+      xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
 
       mqttPublishLog(device_id, timestamp, duration, 123, card_number, activationtype);
       free(timestamp);
@@ -363,8 +383,6 @@ void vTaskServoTampa(void *pvParameters)
 
 void vTaskServoDispenser(void *pvParameters)
 {
-  int delay_rotation = 15;
-  int max_degress = 90;
   int dispenser_time;
   char *timestamp;
   bool activationtype;
@@ -375,12 +393,22 @@ void vTaskServoDispenser(void *pvParameters)
       xSemaphoreTake(xSemaphoreOpenDispenser,portMAX_DELAY);
       mqttPublishMessage(device_id, "Abrindo dispenser.");
       timestamp = getTimeISORTC();
-      rotateBothServos(servo1, servo2, 0, max_degress, delay_rotation); //Abre a tampa
-      rotateServo(servo3, 0, 180, 15); //Abre o dispenser
+      digitalWrite(openCoverPin, LOW);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      digitalWrite(openCoverPin, HIGH);
+      xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
+
+      digitalWrite(dispenserPin, LOW);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      digitalWrite(dispenserPin, HIGH);
+      xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
 
       vTaskDelay(pdMS_TO_TICKS(dispenser_time));
-      rotateServo(servo3, 180, 0, 15); //Fecha o dispenser
-      rotateBothServos(servo1, servo2, max_degress, 0, delay_rotation); //Fecha a tampa
+
+      digitalWrite(closeCoverPin, LOW);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      digitalWrite(closeCoverPin, HIGH);
+      xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
     
       mqttPublishLogDispenser(device_id, timestamp, dispenser_time, activationtype);
       free(timestamp);
@@ -490,7 +518,6 @@ void vTaskRFID(void *pvParameters)
             xQueueOverwrite(xFilaActivationType, &activationtype);
             vTaskResume(taskServoTampaHandle);
             xSemaphoreGive(xSemaphoreOpenCover);
-            xTimerStart(xTimerClose,0);
             vTaskResume(taskRFIDResetHandle);
           }
           else{
@@ -645,53 +672,10 @@ void btnDispenserISRCallBack(){
   xSemaphoreGiveFromISR(xSemaphoreOpenDispenser, &xHighPriorityTaskWoken);
 }
 
-//.......................Servos.............................
-void initServos(Servo &servo1_name, Servo &servo2_name, Servo &servo3_name, int servo1_Pin, int servo2_Pin, int servo3_Pin){
-  ESP32PWM::allocateTimer(0);
-  ESP32PWM::allocateTimer(1);
-  ESP32PWM::allocateTimer(2);
-  ESP32PWM::allocateTimer(3);
-  servo1_name.setPeriodHertz(50);    // standard 50 hz servo
-  servo2_name.setPeriodHertz(50);
-  servo3_name.setPeriodHertz(50);
-  servo1_name.attach(servo1_Pin, 400, 2500); // attaches the servo on pin to the servo object
-  servo2_name.attach(servo2_Pin, 400, 2500);
-  servo3_name.attach(servo3_Pin, 400, 2500);
-}
+void ackStepperISRCallBack(){
+  BaseType_t xHighPriorityTaskWoken = pdFALSE;
 
-void rotateServo(Servo &servo, int init_pos, int final_pos, int delay_rot){
-  int pos;
-  
-  if(init_pos < final_pos){
-    for (pos = init_pos; pos <= final_pos; pos += 1){
-      servo.write(pos);
-      vTaskDelay(pdMS_TO_TICKS(delay_rot));
-    }
-  }
-  else{
-    for (pos = init_pos; pos >= final_pos; pos -= 1){
-      servo.write(pos);
-      vTaskDelay(pdMS_TO_TICKS(delay_rot));
-    }
-  }
-}
-
-void rotateBothServos(Servo &servo1_name, Servo &servo2_name, int init_pos, int final_pos, int delay_rot){
-  int pos;
-  if(init_pos < final_pos){ 
-    for (pos = init_pos; pos <= final_pos; pos += 1){
-        servo1_name.write(pos);
-        servo2_name.write(final_pos-pos);
-        vTaskDelay(pdMS_TO_TICKS(delay_rot));
-      }
-  }
-  else{
-    for (pos = init_pos; pos >= final_pos; pos -= 1){
-      servo1_name.write(pos);
-      servo2_name.write(init_pos-pos);
-      vTaskDelay(pdMS_TO_TICKS(delay_rot));
-    }
-  }
+  xSemaphoreGiveFromISR(xSemaphoreACKStepper, &xHighPriorityTaskWoken);
 }
 
 //.......................RFID.............................
@@ -1578,9 +1562,9 @@ void readSendFile(String pathFile, char * mqtt_topic) {
 
 //.......................RGB.............................
 void setRGBColor(int red, int green, int blue){
-  analogWrite(RGBRedPin, red);
-  analogWrite(RGBGreenPin, green);
-  analogWrite(RGBBluePin, blue);
+  //analogWrite(RGBRedPin, red);
+  //analogWrite(RGBGreenPin, green);
+  //analogWrite(RGBBluePin, blue);
 }
 
 void blinkRGBColor(int red, int green, int blue){
