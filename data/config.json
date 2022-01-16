@@ -1,0 +1,26 @@
+{
+    "last_update": "19/12/2021 12:00:00",
+    "device_id": "1",
+    "wifi_ssid": "eduardo_2.4.1",
+    "wifi_password": "duduguto",
+    "mqtt_server": "broker.emqx.io",
+    "mqtt_port": 1883,
+    "mqtt_topic": "pote_gata/",
+    "mqtt_topic_heartbeat": "/heartbeat",
+    "mqtt_topic_logs": "/logs",
+    "mqtt_topic_logs_dispenser": "/logs_dispenser",
+    "mqtt_topic_logs_errors": "/logs_errors",
+    "mqtt_topic_commands": "/commands",
+    "mqtt_topic_messages": "/messages",
+    "mqtt_topic_config": "/config",
+    "mqtt_topic_dispenser": "/dispenser",
+    "mqtt_topic_schedule": "/schedule",
+    "ntp_server": "time.google.com",
+    "registered_cards": [],
+    "dispenser_schedule": {
+        "13:30:30": 4000,
+        "13:35:30": 5000,
+        "15:00:00": 6000,
+        "15:47:00": 7000
+    }
+}
