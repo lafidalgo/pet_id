@@ -38,6 +38,9 @@
 #define closeCoverPin 15
 #define ackStepperPin 34
 
+HX711 scaleCover;
+HX711 scaleDispenser;
+
 RTC_DS3231 rtc;
 
 WiFiClient espClient;
@@ -191,6 +194,9 @@ void setup() {
   pinMode(closeCoverPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
   digitalWrite(closeCoverPin, HIGH);
   pinMode(ackStepperPin, INPUT); //DEFINE O PINO COMO SAÍDA  
+
+  scaleCover.begin(weightCoverDTPin, weightCoverSCKPin);
+  scaleDispenser.begin(weightDispenserDTPin, weightDispenserSCKPin);
 
   if(!SPIFFS.begin(true)){
     Serial.println("An Error has occurred while mounting SPIFFS");
