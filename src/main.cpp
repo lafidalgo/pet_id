@@ -1549,9 +1549,9 @@ void readSendFile(String pathFile, char * mqtt_topic) {
 
 //.......................RGB.............................
 void setRGBColor(int red, int green, int blue){
-  //analogWrite(RGBRedPin, red);
-  //analogWrite(RGBGreenPin, green);
-  //analogWrite(RGBBluePin, blue);
+  analogWrite(RGBRedPin, red);
+  analogWrite(RGBGreenPin, green);
+  analogWrite(RGBBluePin, blue);
 }
 
 void blinkRGBColor(int red, int green, int blue){
