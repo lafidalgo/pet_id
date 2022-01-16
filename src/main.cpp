@@ -364,7 +364,6 @@ void vTaskServoTampa(void *pvParameters)
       duration = millis();
       timestamp = getTimeISORTC();
       openCover();
-      xTimerStart(xTimerClose,0);
 
       xSemaphoreTake(xSemaphoreCloseCover,portMAX_DELAY);
       xTimerStop(xTimerClose,0);
@@ -505,6 +504,7 @@ void vTaskRFID(void *pvParameters)
             xQueueOverwrite(xFilaActivationType, &activationtype);
             vTaskResume(taskServoTampaHandle);
             xSemaphoreGive(xSemaphoreOpenCover);
+            xTimerStart(xTimerClose,0);
             vTaskResume(taskRFIDResetHandle);
           }
           else{
@@ -1157,7 +1157,7 @@ void syncTime(){
   struct tm time;
 
   if(!getLocalTime(&time)){
-    mqttPublishLogError(device_id, "Could not obtain time info");
+    mqttPublishLogError(device_id, "Could not sync time info");
     return;
   }
   rtc.adjust(DateTime(time.tm_year + 1900, time.tm_mon + 1, time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec));
@@ -1549,9 +1549,9 @@ void readSendFile(String pathFile, char * mqtt_topic) {
 
 //.......................RGB.............................
 void setRGBColor(int red, int green, int blue){
-  analogWrite(RGBRedPin, red);
-  analogWrite(RGBGreenPin, green);
-  analogWrite(RGBBluePin, blue);
+  //analogWrite(RGBRedPin, red);
+  //analogWrite(RGBGreenPin, green);
+  //analogWrite(RGBBluePin, blue);
 }
 
 void blinkRGBColor(int red, int green, int blue){
