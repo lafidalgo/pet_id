@@ -26,7 +26,7 @@
 #define btnMasterPin 23
 #define btnCoverPin 5
 #define btnDispenserPin 18
-#define RGBRedPin 35
+#define RGBRedPin 33
 #define RGBGreenPin 12
 #define RGBBluePin 25
 #define weightCoverDTPin 27
@@ -38,7 +38,11 @@
 #define closeCoverPin 15
 #define ackStepperPin 34
 #define btnCalibratePin 32
-#define animalDetectPin 33
+#define animalDetectPin 35
+
+#define RGBRedChannel 1
+#define RGBGreenChannel 2
+#define RGBBlueChannel 3
 
 HX711 scaleCover;
 HX711 scaleDispenser;
@@ -192,9 +196,12 @@ void setup() {
   pinMode(btnCoverPin,INPUT_PULLUP);
   pinMode(btnDispenserPin,INPUT_PULLUP);
 
-  pinMode(RGBRedPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
-  pinMode(RGBGreenPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
-  pinMode(RGBBluePin, OUTPUT); //DEFINE O PINO COMO SAÍDA 
+  ledcSetup(RGBRedChannel, 12000, 8);
+  ledcSetup(RGBGreenChannel, 12000, 8);
+  ledcSetup(RGBBlueChannel, 12000, 8);
+  ledcAttachPin(RGBRedPin, RGBRedChannel);
+  ledcAttachPin(RGBGreenPin, RGBGreenChannel);
+  ledcAttachPin(RGBBluePin, RGBBlueChannel);
 
   pinMode(dispenserPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
   digitalWrite(dispenserPin, HIGH);
@@ -1620,9 +1627,9 @@ void readSendFile(String pathFile, char * mqtt_topic) {
 
 //.......................RGB.............................
 void setRGBColor(int red, int green, int blue){
-  //analogWrite(RGBRedPin, red);
-  //analogWrite(RGBGreenPin, green);
-  //analogWrite(RGBBluePin, blue);
+  ledcWrite(RGBRedChannel, red);
+  ledcWrite(RGBGreenChannel, green);
+  ledcWrite(RGBBlueChannel, blue);
 }
 
 void blinkRGBColor(int red, int green, int blue){
