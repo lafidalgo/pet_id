@@ -26,7 +26,7 @@
 #define btnMasterPin 23
 #define btnCoverPin 5
 #define btnDispenserPin 18
-#define RGBRedPin 32
+#define RGBRedPin 35
 #define RGBGreenPin 33
 #define RGBBluePin 25
 #define weightCoverDTPin 27
@@ -37,6 +37,7 @@
 #define openCoverPin 4
 #define closeCoverPin 15
 #define ackStepperPin 34
+#define btnCalibratePin 32
 
 HX711 scaleCover;
 HX711 scaleDispenser;
@@ -82,6 +83,7 @@ TaskHandle_t taskSyncTimeHandle = NULL;
 TaskHandle_t taskConnectionsCheckHandle = NULL;
 TaskHandle_t taskHeartbeatHandle = NULL;
 TaskHandle_t taskRFIDResetHandle = NULL;
+TaskHandle_t taskHX711CalibrateHandle = NULL;
 
 QueueHandle_t xFilaRGBRed;
 QueueHandle_t xFilaRGBGreen;
@@ -115,6 +117,7 @@ void vTaskSyncTime(void *pvParameters);
 void vTaskConnectionsCheck(void *pvParameters);
 void vTaskHeartbeat(void *pvParameters);
 void vTaskRFIDReset(void *pvParameters);
+void vTaskHX711Calibrate(void *pvParameters);
 
 void callBackTimerClose(TimerHandle_t xTimer);
 void callBackTimerMasterMode(TimerHandle_t xTimer);
@@ -160,6 +163,7 @@ void btnMasterISRCallBack();
 void btnCoverISRCallBack();
 void btnDispenserISRCallBack();
 void ackStepperISRCallBack();
+void btnCalibrateISRCallBack();
 
 bool writeFile(String values, String pathFile, bool appending);
 String readFile(String pathFile);
@@ -198,6 +202,8 @@ void setup() {
   pinMode(closeCoverPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
   digitalWrite(closeCoverPin, HIGH);
   pinMode(ackStepperPin, INPUT); //DEFINE O PINO COMO SAÍDA  
+
+  pinMode(btnCalibratePin,INPUT_PULLUP);
 
   scaleCover.begin(weightCoverDTPin, weightCoverSCKPin);
   scaleDispenser.begin(weightDispenserDTPin, weightDispenserSCKPin);
@@ -249,6 +255,8 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(btnCoverPin), btnCoverISRCallBack, FALLING);
   attachInterrupt(digitalPinToInterrupt(btnDispenserPin), btnDispenserISRCallBack, FALLING);
   attachInterrupt(digitalPinToInterrupt(ackStepperPin), ackStepperISRCallBack, RISING);
+
+  attachInterrupt(digitalPinToInterrupt(btnCalibratePin), btnCalibrateISRCallBack, FALLING);
 
   xSemaphoreMasterMode = xSemaphoreCreateBinary();
 
@@ -347,6 +355,12 @@ void setup() {
   }
   vTaskSuspend(taskRFIDResetHandle);
 
+  if(xTaskCreatePinnedToCore(vTaskHX711Calibrate,"TASK HX711 CALIBRATE",configMINIMAL_STACK_SIZE+2048,NULL,1,&taskHX711CalibrateHandle, PRO_CPU_NUM) == pdFAIL){
+    mqttPublishLogError(device_id, "Não foi possível criar a Task HX711 Calibrate");
+    ESP.restart();
+  }
+  vTaskSuspend(taskHX711CalibrateHandle);
+
 
   mqttPublishConfig();
 }
@@ -395,7 +409,7 @@ void vTaskServoTampa(void *pvParameters)
 
 void vTaskServoDispenser(void *pvParameters)
 {
-  long weight_limit_cover = 100000;
+  //long weight_limit_cover = 100000;
   int dispenser_portions, count_portions;
   char *timestamp;
   bool activationtype;
@@ -621,6 +635,19 @@ void vTaskRFIDReset(void *pvParameters)
     }
 }
 
+void vTaskHX711Calibrate(void *pvParameters)
+{
+    while (1)
+    {
+      Serial.println("Calibrando balança pote.");
+      calibrateHX711(scaleCover);
+      Serial.println("Calibrando balança dispenser.");
+      calibrateHX711(scaleDispenser);
+      Serial.println("Fim da calibração.");
+      vTaskSuspend(taskHX711CalibrateHandle);
+    }
+}
+
 //.......................Timers.............................
 void callBackTimerClose(TimerHandle_t xTimer){
   xSemaphoreGive(xSemaphoreCloseCover);
@@ -695,6 +722,11 @@ void ackStepperISRCallBack(){
   BaseType_t xHighPriorityTaskWoken = pdFALSE;
 
   xSemaphoreGiveFromISR(xSemaphoreACKStepper, &xHighPriorityTaskWoken);
+}
+
+void btnCalibrateISRCallBack(){
+  Serial.println("Entrando no modo de calibração das balanças.");
+  vTaskResume(taskHX711CalibrateHandle);
 }
 
 //.......................RFID.............................
@@ -1641,7 +1673,7 @@ void calibrateHX711(HX711 &scale){
   scale.set_scale();
   scale.tare();
   Serial.println("Adicione o peso de 100g na balança.");
-  vTaskDelay(pdMS_TO_TICKS(2000));
+  vTaskDelay(pdMS_TO_TICKS(5000));
   Serial.println("Espere um momento...");
   weight = scale.get_units(10);
   scale.set_scale(weight/100);
