@@ -1641,6 +1641,8 @@ void blinkRGBColor(int red, int green, int blue){
 
 //.......................Stepper & Servos.............................
 void openCover(){
+  digitalWrite(dispenserPin, HIGH);
+  vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(openCoverPin, LOW);
   vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(openCoverPin, HIGH);
@@ -1648,6 +1650,8 @@ void openCover(){
 }
 
 void closeCover(){
+  digitalWrite(dispenserPin, HIGH);
+  vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(closeCoverPin, LOW);
   vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(closeCoverPin, HIGH);
@@ -1655,6 +1659,8 @@ void closeCover(){
 }
 
 void rotateDispenser(){
+  digitalWrite(dispenserPin, HIGH);
+  vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(dispenserPin, LOW);
   vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(dispenserPin, HIGH);
