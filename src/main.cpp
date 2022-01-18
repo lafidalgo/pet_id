@@ -150,7 +150,7 @@ void setupWiFi(char ssid[30], char pwd[30], int max_tries, int delay);
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 void mqttConnectionCheck(int max_tries, int delay);
 void mqttPublishLog(char *id, char *time_stamp, long duration_open, long food_weight, char *card_payload, bool activation_type);
-void mqttPublishLogDispenser(char *id, char *time_stamp, long food_weight, bool activation_type);
+void mqttPublishLogDispenser(char *id, char *time_stamp, long food_weight, long dispenser_weight, bool activation_type);
 void mqttPublishLogError(char *id, const char *error);
 boolean mqttPublishConfig();
 void mqttPublishMessage(char * id, const char * message);
@@ -171,6 +171,10 @@ void blinkRGBColor(int red, int green, int blue);
 void openCover();
 void closeCover();
 void rotateDispenser();
+
+long getWeight(HX711 &scale);
+void calibrateHX711(HX711 &scale);
+void tareHX711(HX711 &scale);
 
 /*função setup*/
 void setup() {
@@ -361,6 +365,7 @@ void vTaskServoTampa(void *pvParameters)
   char *timestamp;
   char card_number[11];
   bool activationtype;
+  long weight_before, weight_after, weight_difference;
     while (1)
     {
       xQueueReceive(xFilaCardNumber, &card_number, portMAX_DELAY);
@@ -370,14 +375,17 @@ void vTaskServoTampa(void *pvParameters)
       mqttPublishMessage(device_id, "Abrindo tampa.");
       duration = millis();
       timestamp = getTimeISORTC();
+      weight_before = getWeight(scaleCover);
       openCover();
 
       xSemaphoreTake(xSemaphoreCloseCover,portMAX_DELAY);
       xTimerStop(xTimerClose,0);
       duration = millis() - duration;
       closeCover();
+      weight_after = getWeight(scaleCover);
+      weight_difference = weight_before - weight_after;
 
-      mqttPublishLog(device_id, timestamp, duration, 123, card_number, activationtype);
+      mqttPublishLog(device_id, timestamp, duration, weight_difference, card_number, activationtype);
       free(timestamp);
       mqttPublishMessage(device_id, "Fechando tampa.");
       vTaskSuspend(taskRFIDResetHandle);
@@ -387,9 +395,12 @@ void vTaskServoTampa(void *pvParameters)
 
 void vTaskServoDispenser(void *pvParameters)
 {
+  long weight_limit_cover = 100000;
   int dispenser_portions, count_portions;
   char *timestamp;
   bool activationtype;
+  long weight_before_cover, weight_after_cover, weight_difference_cover;
+  long weight_remaining_dispenser;
     while (1)
     {
       xQueueReceive(xFilaDispenserPortions, &dispenser_portions, portMAX_DELAY);
@@ -398,15 +409,26 @@ void vTaskServoDispenser(void *pvParameters)
       mqttPublishMessage(device_id, "Abrindo dispenser.");
       timestamp = getTimeISORTC();
 
+      weight_before_cover = getWeight(scaleCover);
+      weight_after_cover = weight_before_cover;
       openCover();
 
       for(count_portions = 0; count_portions < dispenser_portions; count_portions++){
         rotateDispenser();
+        weight_after_cover = getWeight(scaleCover);
+        weight_difference_cover = weight_after_cover - weight_before_cover;
       }
+      
+      /*while(weight_after_cover < weight_limit_cover && weight_difference_cover < dispenser_portions){
+        rotateDispenser();
+        weight_after_cover = getWeight(scaleCover);
+        weight_difference_cover = weight_after_cover - weight_before_cover;
+      }*/
 
       closeCover();
+      weight_remaining_dispenser = getWeight(scaleDispenser);
     
-      mqttPublishLogDispenser(device_id, timestamp, dispenser_portions, activationtype);
+      mqttPublishLogDispenser(device_id, timestamp, weight_difference_cover, weight_remaining_dispenser, activationtype);
       free(timestamp);
       mqttPublishMessage(device_id, "Fechando o dispenser.");
       vTaskResume(taskDispenserScheduleCheckHandle);
@@ -1368,7 +1390,7 @@ void mqttPublishLog(char *id, char *time_stamp, long duration_open, long food_we
   }
 }
 
-void mqttPublishLogDispenser(char *id, char *time_stamp, long food_weight, bool activation_type){
+void mqttPublishLogDispenser(char *id, char *time_stamp, long food_weight, long dispenser_weight, bool activation_type){
   char message[170];
 
   StaticJsonDocument<210> doc;
@@ -1376,6 +1398,7 @@ void mqttPublishLogDispenser(char *id, char *time_stamp, long food_weight, bool 
   doc["device_id"] = id;
   doc["timestamp"] = time_stamp;
   doc["food_weight"] = food_weight;
+  doc["dispenser_weight"] = dispenser_weight;
   doc["activation_type"] = activation_type;
 
   size_t n = serializeJson(doc, message);
@@ -1571,7 +1594,7 @@ void blinkRGBColor(int red, int green, int blue){
   xQueueOverwrite(xFilaRGBBlue, &blue);
 }
 
-//.......................Stepper.............................
+//.......................Stepper & Servos.............................
 void openCover(){
   digitalWrite(openCoverPin, LOW);
   vTaskDelay(pdMS_TO_TICKS(100));
@@ -1591,4 +1614,43 @@ void rotateDispenser(){
   vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(dispenserPin, HIGH);
   xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
+}
+
+//.......................HX711.............................
+long getWeight(HX711 &scale){
+  long weight = 0;
+
+  scale.power_up();
+  if (scale.wait_ready_timeout(1000)) {
+    weight = scale.get_units(10);
+    Serial.print("Weight: ");
+    Serial.println(weight);
+  }
+  else {
+    Serial.println("HX711 not found.");
+  }
+
+  scale.power_down();
+  return weight;
+}
+
+void calibrateHX711(HX711 &scale){
+  long weight;
+
+  scale.power_up();
+  scale.set_scale();
+  scale.tare();
+  Serial.println("Adicione o peso de 100g na balança.");
+  vTaskDelay(pdMS_TO_TICKS(2000));
+  Serial.println("Espere um momento...");
+  weight = scale.get_units(10);
+  scale.set_scale(weight/100);
+  Serial.println("Balaça calibrada com sucesso.");
+  scale.power_down();
+}
+
+void tareHX711(HX711 &scale){
+  scale.power_up();
+  scale.tare();
+  scale.power_down();
 }
