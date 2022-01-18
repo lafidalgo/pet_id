@@ -27,7 +27,7 @@
 #define btnCoverPin 5
 #define btnDispenserPin 18
 #define RGBRedPin 35
-#define RGBGreenPin 33
+#define RGBGreenPin 12
 #define RGBBluePin 25
 #define weightCoverDTPin 27
 #define weightCoverSCKPin 14
@@ -38,6 +38,7 @@
 #define closeCoverPin 15
 #define ackStepperPin 34
 #define btnCalibratePin 32
+#define animalDetectPin 33
 
 HX711 scaleCover;
 HX711 scaleDispenser;
@@ -201,7 +202,8 @@ void setup() {
   digitalWrite(openCoverPin, HIGH);
   pinMode(closeCoverPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
   digitalWrite(closeCoverPin, HIGH);
-  pinMode(ackStepperPin, INPUT); //DEFINE O PINO COMO SAÍDA  
+  pinMode(ackStepperPin, INPUT); //DEFINE O PINO COMO SAÍDA
+  pinMode(animalDetectPin, INPUT); //DEFINE O PINO COMO SAÍDA   
 
   pinMode(btnCalibratePin,INPUT_PULLUP);
 
@@ -394,6 +396,10 @@ void vTaskServoTampa(void *pvParameters)
 
       xSemaphoreTake(xSemaphoreCloseCover,portMAX_DELAY);
       xTimerStop(xTimerClose,0);
+      while(digitalRead(animalDetectPin) == HIGH){
+        Serial.println("Animal detectado, esperando desobstrução.");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+      }
       duration = millis() - duration;
       closeCover();
       weight_after = getWeight(scaleCover);
