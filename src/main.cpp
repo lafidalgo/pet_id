@@ -152,6 +152,7 @@ int timestampHourToInt(const char * time);
 void syncTime();
 char * getTimeRTC();
 char * getTimeISORTC();
+void checkConnectionNTP(int max_time_retry, int delay_retry);
 
 void setupWiFi(char ssid[30], char pwd[30], int max_tries, int delay);
 
@@ -238,6 +239,7 @@ void setup() {
   setupWiFi(wifi_ssid, wifi_password, 10, 500);
 
   configTime(-3*3600, 0, ntp_server);
+  checkConnectionNTP(150, 100);
   syncTime();
 
   client.setServer(mqtt_server, mqtt_port);
@@ -1287,6 +1289,29 @@ char * getTimeISORTC(){
   strcat(timestamp, "Z");
 
   return timestamp;
+}
+
+void checkConnectionNTP(int max_time_retry, int delay_retry){
+  int count_time_retry = 0;
+  struct tm timeinfo;
+
+  Serial.print("Connecting to NTP server.");
+  while(time(nullptr) <= 100000){
+    Serial.print(".");
+    vTaskDelay(pdMS_TO_TICKS(delay_retry));
+    count_time_retry++;
+    if(count_time_retry > max_time_retry){
+      Serial.print("Couldn't connect to NTP server.");
+      break;
+    }
+  }
+  Serial.println();
+
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
 //.......................WiFi.............................
