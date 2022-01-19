@@ -1669,7 +1669,7 @@ void openCover(){
   digitalWrite(dispenserPin, HIGH);
   vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(openCoverPin, LOW);
-  vTaskDelay(pdMS_TO_TICKS(100));
+  vTaskDelay(pdMS_TO_TICKS(500));
   digitalWrite(openCoverPin, HIGH);
   xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
 }
@@ -1678,7 +1678,7 @@ void closeCover(){
   digitalWrite(dispenserPin, HIGH);
   vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(closeCoverPin, LOW);
-  vTaskDelay(pdMS_TO_TICKS(100));
+  vTaskDelay(pdMS_TO_TICKS(500));
   digitalWrite(closeCoverPin, HIGH);
   xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
 }
@@ -1687,7 +1687,7 @@ void rotateDispenser(){
   digitalWrite(dispenserPin, HIGH);
   vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(dispenserPin, LOW);
-  vTaskDelay(pdMS_TO_TICKS(100));
+  vTaskDelay(pdMS_TO_TICKS(500));
   digitalWrite(dispenserPin, HIGH);
   xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
 }
