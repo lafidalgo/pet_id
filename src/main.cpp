@@ -454,6 +454,10 @@ void vTaskServoDispenser(void *pvParameters)
         weight_difference_cover = weight_after_cover - weight_before_cover;
       }*/
 
+      while(digitalRead(animalDetectPin) == HIGH){
+        Serial.println("Animal detectado, esperando desobstrução.");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+      }
       closeCover();
       weight_remaining_dispenser = getWeight(scaleDispenser);
     
