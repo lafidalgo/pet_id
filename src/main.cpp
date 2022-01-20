@@ -1673,27 +1673,24 @@ void openCover(){
   digitalWrite(dispenserPin, HIGH);
   vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(openCoverPin, LOW);
-  vTaskDelay(pdMS_TO_TICKS(500));
-  digitalWrite(openCoverPin, HIGH);
   xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
+  digitalWrite(openCoverPin, HIGH);
 }
 
 void closeCover(){
   digitalWrite(dispenserPin, HIGH);
   vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(closeCoverPin, LOW);
-  vTaskDelay(pdMS_TO_TICKS(500));
-  digitalWrite(closeCoverPin, HIGH);
   xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
+  digitalWrite(closeCoverPin, HIGH);
 }
 
 void rotateDispenser(){
   digitalWrite(dispenserPin, HIGH);
   vTaskDelay(pdMS_TO_TICKS(100));
   digitalWrite(dispenserPin, LOW);
-  vTaskDelay(pdMS_TO_TICKS(500));
-  digitalWrite(dispenserPin, HIGH);
   xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
+  digitalWrite(dispenserPin, HIGH);
 }
 
 //.......................HX711.............................
