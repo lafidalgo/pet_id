@@ -1776,7 +1776,5 @@ float measureDistance(int quantity){
   }
   distance = (distance/10);
 
-  Serial.println(distance);
-
   return distance;
 }
