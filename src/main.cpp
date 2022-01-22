@@ -11,6 +11,8 @@
 #include "RTClib.h"  
 #include <SPI.h>
 #include "HX711.h"
+#include <ESP32Servo.h>
+#include <Ultrasonic.h>
 
 /*Bibliotecas FreeRTOS */
 #include "freertos/FreeRTOS.h"
@@ -34,15 +36,22 @@
 #define weightDispenserDTPin 26
 #define weightDispenserSCKPin 13
 #define dispenserPin 2
-#define openCoverPin 4
-#define closeCoverPin 15
-#define ackStepperPin 34
-#define btnCalibratePin 32
-#define animalDetectPin 35
+#define servo1Pin 4
+#define servo2Pin 15
+#define echoPin 34
+#define trigPin 32
+#define btnCalibratePin 35
 
 #define RGBRedChannel 1
 #define RGBGreenChannel 2
 #define RGBBlueChannel 3
+
+#define dispenserChannel 4
+
+Servo servo1;  // create servo object to control a servo
+Servo servo2;
+
+Ultrasonic ultrasonic(trigPin, echoPin);
 
 HX711 scaleCover;
 HX711 scaleDispenser;
@@ -102,7 +111,6 @@ SemaphoreHandle_t xSemaphoreOpenCover;
 SemaphoreHandle_t xSemaphoreCloseCover;
 SemaphoreHandle_t xSemaphoreOpenDispenser;
 SemaphoreHandle_t xSemaphoreMasterMode;
-SemaphoreHandle_t xSemaphoreACKStepper;
 
 TimerHandle_t xTimerClose;
 TimerHandle_t xTimerMasterMode;
@@ -168,7 +176,6 @@ void mqttPublishHeartbeat(char * id);
 void btnMasterISRCallBack();
 void btnCoverISRCallBack();
 void btnDispenserISRCallBack();
-void ackStepperISRCallBack();
 void btnCalibrateISRCallBack();
 
 bool writeFile(String values, String pathFile, bool appending);
@@ -185,6 +192,12 @@ void rotateDispenser();
 long getWeight(HX711 &scale);
 void calibrateHX711(HX711 &scale);
 void tareHX711(HX711 &scale);
+
+void initServos();
+void rotateServo(Servo &servo, int init_pos, int final_pos, int delay_rot);
+void rotateBothServos(Servo &servo1_name, Servo &servo2_name, int init_pos, int final_pos, int delay_rot);
+
+float measureDistance(int quantity);
 
 /*função setup*/
 void setup() {
@@ -205,13 +218,11 @@ void setup() {
   ledcAttachPin(RGBBluePin, RGBBlueChannel);
 
   pinMode(dispenserPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
-  digitalWrite(dispenserPin, HIGH);
-  pinMode(openCoverPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
-  digitalWrite(openCoverPin, HIGH);
-  pinMode(closeCoverPin, OUTPUT); //DEFINE O PINO COMO SAÍDA
-  digitalWrite(closeCoverPin, HIGH);
-  pinMode(ackStepperPin, INPUT); //DEFINE O PINO COMO SAÍDA
-  pinMode(animalDetectPin, INPUT); //DEFINE O PINO COMO SAÍDA   
+  ledcAttachPin(dispenserPin, dispenserChannel);//Atribuimos o pino 2 ao canal 0.
+  ledcSetup(dispenserChannel, 500, 8);//Atribuimos ao canal 0 a frequencia de 1000Hz com resolucao de 10bits.
+  ledcWrite(dispenserChannel, 0);
+
+  initServos();
 
   pinMode(btnCalibratePin,INPUT_PULLUP);
 
@@ -265,7 +276,6 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(btnMasterPin), btnMasterISRCallBack, FALLING);
   attachInterrupt(digitalPinToInterrupt(btnCoverPin), btnCoverISRCallBack, FALLING);
   attachInterrupt(digitalPinToInterrupt(btnDispenserPin), btnDispenserISRCallBack, FALLING);
-  attachInterrupt(digitalPinToInterrupt(ackStepperPin), ackStepperISRCallBack, RISING);
 
   attachInterrupt(digitalPinToInterrupt(btnCalibratePin), btnCalibrateISRCallBack, FALLING);
 
@@ -293,13 +303,6 @@ void setup() {
   xSemaphoreOpenDispenser = xSemaphoreCreateBinary();
 
   if(xSemaphoreOpenDispenser == NULL){
-   mqttPublishLogError(device_id, "Não foi possível criar o semaforo!");
-   ESP.restart();
-  }
-
-  xSemaphoreACKStepper = xSemaphoreCreateBinary();
-
-  if(xSemaphoreACKStepper == NULL){
    mqttPublishLogError(device_id, "Não foi possível criar o semaforo!");
    ESP.restart();
   }
@@ -405,7 +408,7 @@ void vTaskServoTampa(void *pvParameters)
 
       xSemaphoreTake(xSemaphoreCloseCover,portMAX_DELAY);
       xTimerStop(xTimerClose,0);
-      while(digitalRead(animalDetectPin) == HIGH){
+      while(measureDistance(10) < 10){
         Serial.println("Animal detectado, esperando desobstrução.");
         vTaskDelay(pdMS_TO_TICKS(1000));
       }
@@ -454,7 +457,7 @@ void vTaskServoDispenser(void *pvParameters)
         weight_difference_cover = weight_after_cover - weight_before_cover;
       }*/
 
-      while(digitalRead(animalDetectPin) == HIGH){
+      while(measureDistance(10) < 10){
         Serial.println("Animal detectado, esperando desobstrução.");
         vTaskDelay(pdMS_TO_TICKS(1000));
       }
@@ -735,12 +738,6 @@ void btnDispenserISRCallBack(){
   xQueueSendToFrontFromISR(xFilaActivationTypeDispenser, &activationtype, &xHighPriorityTaskWoken);
   vTaskResume(taskServoDispenserHandle);
   xSemaphoreGiveFromISR(xSemaphoreOpenDispenser, &xHighPriorityTaskWoken);
-}
-
-void ackStepperISRCallBack(){
-  BaseType_t xHighPriorityTaskWoken = pdFALSE;
-
-  xSemaphoreGiveFromISR(xSemaphoreACKStepper, &xHighPriorityTaskWoken);
 }
 
 void btnCalibrateISRCallBack(){
@@ -1670,27 +1667,17 @@ void blinkRGBColor(int red, int green, int blue){
 
 //.......................Stepper & Servos.............................
 void openCover(){
-  digitalWrite(dispenserPin, HIGH);
-  vTaskDelay(pdMS_TO_TICKS(100));
-  digitalWrite(openCoverPin, LOW);
-  xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
-  digitalWrite(openCoverPin, HIGH);
+  rotateBothServos(servo1, servo2, 0, 90, 15); //Abre a tampa
 }
 
 void closeCover(){
-  digitalWrite(dispenserPin, HIGH);
-  vTaskDelay(pdMS_TO_TICKS(100));
-  digitalWrite(closeCoverPin, LOW);
-  xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
-  digitalWrite(closeCoverPin, HIGH);
+  rotateBothServos(servo1, servo2, 90, 0, 15); //Fecha a tampa
 }
 
 void rotateDispenser(){
-  digitalWrite(dispenserPin, HIGH);
-  vTaskDelay(pdMS_TO_TICKS(100));
-  digitalWrite(dispenserPin, LOW);
-  xSemaphoreTake(xSemaphoreACKStepper,portMAX_DELAY);
-  digitalWrite(dispenserPin, HIGH);
+  ledcWrite(dispenserChannel, 128);//Escrevemos no canal 0, o duty cycle "i".
+  delay(1100);
+  ledcWrite(dispenserChannel, 0);
 }
 
 //.......................HX711.............................
@@ -1699,7 +1686,7 @@ long getWeight(HX711 &scale){
 
   scale.power_up();
   if (scale.wait_ready_timeout(1000)) {
-    weight = scale.get_units(10);
+    weight = scale.get_units(5);
     Serial.print("Weight: ");
     Serial.println(weight);
   }
@@ -1730,4 +1717,66 @@ void tareHX711(HX711 &scale){
   scale.power_up();
   scale.tare();
   scale.power_down();
+}
+
+//.......................Servos.............................
+void initServos(){
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+  servo1.setPeriodHertz(50);    // standard 50 hz servo
+  servo2.setPeriodHertz(50);
+  servo1.attach(servo1Pin, 400, 2500); // attaches the servo on pin to the servo object
+  servo2.attach(servo2Pin, 400, 2500);
+}
+
+void rotateServo(Servo &servo, int init_pos, int final_pos, int delay_rot){
+  int pos;
+  
+  if(init_pos < final_pos){
+    for (pos = init_pos; pos <= final_pos; pos += 1){
+      servo.write(pos);
+      vTaskDelay(pdMS_TO_TICKS(delay_rot));
+    }
+  }
+  else{
+    for (pos = init_pos; pos >= final_pos; pos -= 1){
+      servo.write(pos);
+      vTaskDelay(pdMS_TO_TICKS(delay_rot));
+    }
+  }
+}
+
+void rotateBothServos(Servo &servo1_name, Servo &servo2_name, int init_pos, int final_pos, int delay_rot){
+  int pos;
+  if(init_pos < final_pos){ 
+    for (pos = init_pos; pos <= final_pos; pos += 1){
+        servo1_name.write(pos);
+        servo2_name.write(final_pos-pos);
+        vTaskDelay(pdMS_TO_TICKS(delay_rot));
+      }
+  }
+  else{
+    for (pos = init_pos; pos >= final_pos; pos -= 1){
+      servo1_name.write(pos);
+      servo2_name.write(init_pos-pos);
+      vTaskDelay(pdMS_TO_TICKS(delay_rot));
+    }
+  }
+}
+
+//......................Ultrassonic.................
+float measureDistance(int quantity){
+  float distance = 0;
+  int i;
+  
+  for(i = 0; i < 10; i ++){
+    distance += ultrasonic.read();
+  }
+  distance = (distance/10);
+
+  Serial.println(distance);
+
+  return distance;
 }
