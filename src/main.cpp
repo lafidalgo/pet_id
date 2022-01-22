@@ -187,7 +187,7 @@ void blinkRGBColor(int red, int green, int blue);
 
 void openCover();
 void closeCover();
-void rotateDispenser();
+void rotateDispenser(int delay);
 
 long getWeight(HX711 &scale);
 void calibrateHX711(HX711 &scale);
@@ -446,7 +446,7 @@ void vTaskServoDispenser(void *pvParameters)
       openCover();
 
       for(count_portions = 0; count_portions < dispenser_portions; count_portions++){
-        rotateDispenser();
+        rotateDispenser(1100);
         weight_after_cover = getWeight(scaleCover);
         weight_difference_cover = weight_after_cover - weight_before_cover;
       }
@@ -1674,9 +1674,9 @@ void closeCover(){
   rotateBothServos(servo1, servo2, 90, 0, 15); //Fecha a tampa
 }
 
-void rotateDispenser(){
+void rotateDispenser(int delay){
   ledcWrite(dispenserChannel, 128);//Escrevemos no canal 0, o duty cycle "i".
-  delay(1100);
+  vTaskDelay(pdMS_TO_TICKS(delay));
   ledcWrite(dispenserChannel, 0);
 }
 
