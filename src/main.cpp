@@ -42,11 +42,11 @@
 #define trigPin 32
 #define btnCalibratePin 35
 
-#define RGBRedChannel 1
-#define RGBGreenChannel 2
-#define RGBBlueChannel 3
+#define RGBRedChannel 4
+#define RGBGreenChannel 5
+#define RGBBlueChannel 6
 
-#define dispenserChannel 4
+#define dispenserChannel 7
 
 Servo servo1;  // create servo object to control a servo
 Servo servo2;
